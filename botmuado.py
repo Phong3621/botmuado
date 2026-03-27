@@ -7,7 +7,7 @@ from telebot import types
 import logging
 
 # --- CẤU HÌNH BOT ---
-API_TOKEN = "8611787830:AAE4arCbNdls_gRnx5V9DI2k5sNAepw2UEw"
+API_TOKEN = "8611787830:AAFAwfbKhCUd4nwd2zYpntqcfegjSrN-h5c"
 bot = telebot.TeleBot(API_TOKEN, num_threads=10)
 
 # === ADMIN CONFIG ===

@@ -4,25 +4,25 @@ import threading
 import time
 import os
 from telebot import types
+import logging
+
 # --- CẤU HÌNH BOT ---
 API_TOKEN = "8611787830:AAE4arCbNdls_gRnx5V9DI2k5sNAepw2UEw"
+bot = telebot.TeleBot(API_TOKEN, num_threads=10)
 
 # === ADMIN CONFIG ===
 ADMIN_ID = 8547071506
 
-# --- CẤU HÌNH API MUA HÀNG ---
-API_TOKEN_SHOP = "61b5af4899204272d2c6c3fde4a3fae93b33427a8d4fa4192bde0aa3ae2bafa7"  # Thay token mua hàng của bạn
-
-# KIỂM TRA CÁC BIẾN MÔI TRƯỜNG
 # Cấu hình logging
-
-# ADMIN_ID is already an int now
-
-bot = telebot.TeleBot(API_TOKEN, num_threads=10)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 DB_FILE = "database_mail.txt"
 user_active = {}
 scanning_events = {}
+
+# --- CẤU HÌNH API MUA HÀNG ---
+API_TOKEN_SHOP = "61b5af4899204272d2c6c3fde4a3fae93b33427a8d4fa4192bde0aa3ae2bafa7"  # Thay token mua hàng của bạn
 
 # ==================== DECORATOR KIỂM TRA ADMIN ====================
 def admin_only(func):
@@ -59,25 +59,19 @@ def buy_product(product_id, qty=1, coupon=None):
 
     if coupon:
         data["coupon"] = coupon
-    
+
     try:
         res = requests.post(url, headers=headers, data=data, timeout=10)
 
         # Log để debug
-        print(f"📡 STATUS: {res.status_code}")
-        print(f"📝 TEXT: {res.text[:200]}")
-
-        # Kiểm tra nếu API trả về rỗng hoặc HTML
-        if not res.text.strip():
-            return {"success": False, "message": "API trả về rỗng!"}
-
-        if "html" in res.text.lower():
-            return {"success": False, "message": "API trả về HTML (có thể bị chặn / sai token)"} # This line is unchanged, but context changed
+        logger.info(f"📡 API STATUS: {res.status_code}")
+        logger.debug(f"📝 API TEXT: {res.text[:200]}")
 
         return res.json()
 
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        logger.error(f"Lỗi khi gọi API mua hàng: {e}")
+        return {"success": False, "message": f"Lỗi request API mua hàng: {e}"}
 
 # ==================== HÀM XỬ LÝ MAIL ====================
 def get_list_db():
@@ -98,7 +92,8 @@ def call_api(email, token, client_id, service):
     try:
         res = requests.post(url, json=payload, timeout=8)
         return res.json()
-    except: 
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Lỗi khi gọi API get_code_oauth2: {e}")
         return None
 
 def loop_scan(chat_id, email, token, client_id, service, stop_event, timeout_seconds=300):
@@ -163,12 +158,12 @@ def buy_one_sp(message):
     chat_id = message.chat.id
     
     bot.send_message(chat_id, "🛒 **Đang mua sản phẩm 894...**\n📦 Mỗi lần chỉ mua **1** account", parse_mode="Markdown")
-
+    
     # Gọi hàm mua với product_id = 894, qty = 1
     result = buy_product(894, qty=1)
-
+    
     # Kiểm tra kết quả
-    if result and result.get("success") == True: # Fix crash khi lỗi JSON
+    if result and result.get("success"):
         order = result["data"]
         
         # Gửi thông tin đơn hàng
@@ -211,7 +206,7 @@ def buy_one_sp(message):
                     
                     stop_event = threading.Event()
                     scanning_events[chat_id] = stop_event
-                    threading.Thread(target=loop_scan, args=(chat_id, email, token, client_id, "all", stop_event, 300)).start()
+                    threading.Thread(target=loop_scan, args=(chat_id, email, token, client_id, "all", stop_event, 300), daemon=True).start()
                     break  # Chỉ xử lý email đầu tiên
     else:
         error_msg = result.get('message', 'Không rõ lỗi') if result else "Không nhận được phản hồi từ API"
@@ -301,7 +296,7 @@ def handle_callbacks(call):
                 user_active[chat_id] = {"email": p[0], "token": p[2], "id": p[3]}
                 
                 bot.edit_message_text(f"🚀 Đang quét: `{p[0]}`", chat_id, call.message.message_id, parse_mode="Markdown")
-                threading.Thread(target=loop_scan, args=(chat_id, p[0], p[2], p[3], "all", stop_event, 300)).start()
+                threading.Thread(target=loop_scan, args=(chat_id, p[0], p[2], p[3], "all", stop_event, 300), daemon=True).start()
     
     elif call.data.startswith("read:"):
         handle_read_mail_callback(call)
@@ -349,9 +344,13 @@ def handle_info_callback(call):
 
 # ==================== CHẠY BOT ====================
 if __name__ == "__main__":
-    print(f"🤖 Bot đang chạy...")
-    print(f"👑 Admin ID: {ADMIN_ID}")
-    print(f"🔒 Chỉ admin mới được sử dụng bot")
-    print(f"📦 Nút Mua 1 SP: product_id=894, qty=1")
-    print(f"🔑 Đã fix hàm buy_product chuẩn với token trong data")
-    bot.infinity_polling()
+    logger.info(f"🤖 Bot đang khởi động...")
+    logger.info(f"👑 Admin ID: {ADMIN_ID}")
+    logger.info(f"🔒 Chỉ admin mới được sử dụng bot")
+    logger.info(f"📦 Nút Mua 1 SP: product_id=894, qty=1")
+    logger.info(f"🔑 Đã fix hàm buy_product chuẩn với token trong data")
+    try:
+        bot.infinity_polling(skip_pending=True) # skip_pending=True giúp bỏ qua các update cũ khi bot khởi động lại
+    except telebot.apihelper.ApiTelegramException as e:
+        logger.critical(f"❌ Lỗi nghiêm trọng khi khởi động bot: {e}. Đảm bảo chỉ có MỘT instance bot đang chạy!")
+        exit(1) # Thoát chương trình để Railway có thể khởi động lại

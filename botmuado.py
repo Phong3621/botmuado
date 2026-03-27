@@ -47,7 +47,6 @@ def buy_product(product_id, qty=1, coupon=None):
     }
 
     data = {
-        "token": API_TOKEN_SHOP,
         "product_id": product_id,
         "qty": qty
     }
@@ -55,17 +54,24 @@ def buy_product(product_id, qty=1, coupon=None):
     if coupon:
         data["coupon"] = coupon
 
+    # Log để debug
     try:
-        res = requests.post(url, headers=headers, data=data, timeout=10)
+        res = requests.post(url, headers=headers, data=data, timeout=15) # Tăng timeout lên 15s
 
-        # Log để debug
         print(f"📡 STATUS: {res.status_code}")
-        print(f"📝 TEXT: {res.text[:200]}")
+        print(f"📝 RAW: {res.text[:300]}") # Log raw text, giới hạn 300 ký tự
+
+        # Kiểm tra nếu API trả về rỗng hoặc HTML
+        if not res.text.strip():
+            return {"success": False, "message": "API trả về rỗng!"}
+
+        if "html" in res.text.lower():
+            return {"success": False, "message": "API trả về HTML (có thể bị chặn / sai token)"}
 
         return res.json()
 
-    except Exception as e:
-        return {"success": False, "message": str(e)}
+    except Exception as e: # Bắt tất cả các lỗi liên quan đến request
+        return {"success": False, "message": f"Lỗi request: {e}"}
 
 # ==================== HÀM XỬ LÝ MAIL ====================
 def get_list_db():
@@ -85,8 +91,11 @@ def call_api(email, token, client_id, service):
     payload = {"email": email, "refresh_token": token, "client_id": client_id, "type": service}
     try:
         res = requests.post(url, json=payload, timeout=8)
+        res.raise_for_status()  # Báo lỗi nếu status code là 4xx hoặc 5xx
         return res.json()
-    except: 
+    except (requests.exceptions.RequestException, requests.exceptions.JSONDecodeError) as e:
+        # Thay print bằng logging trong môi trường production
+        print(f"Lỗi khi gọi API get_code_oauth2: {e}")
         return None
 
 def loop_scan(chat_id, email, token, client_id, service, stop_event, timeout_seconds=300):
@@ -151,12 +160,16 @@ def buy_one_sp(message):
     chat_id = message.chat.id
     
     bot.send_message(chat_id, "🛒 **Đang mua sản phẩm 894...**\n📦 Mỗi lần chỉ mua **1** account", parse_mode="Markdown")
-    
-    # Gọi hàm mua với product_id = 894, qty = 1
-    result = buy_product(894, qty=1)
-    
+
+    result = None
+    for _ in range(2): # Thử lại tối đa 2 lần nếu API lỗi
+        result = buy_product(894, qty=1)
+        if result and result.get("success") == True: # Fix crash khi lỗi JSON
+            break
+        time.sleep(1) # Đợi 1 giây trước khi thử lại
+
     # Kiểm tra kết quả
-    if result and result.get("success"):
+    if result and result.get("success") == True: # Fix crash khi lỗi JSON
         order = result["data"]
         
         # Gửi thông tin đơn hàng
@@ -199,7 +212,7 @@ def buy_one_sp(message):
                     
                     stop_event = threading.Event()
                     scanning_events[chat_id] = stop_event
-                    threading.Thread(target=loop_scan, args=(chat_id, email, token, client_id, "all", stop_event, 300)).start()
+                    threading.Thread(target=loop_scan, args=(chat_id, email, token, client_id, "all", stop_event, 300), daemon=True).start() # Fix thread Railway
                     break  # Chỉ xử lý email đầu tiên
     else:
         error_msg = result.get('message', 'Không rõ lỗi') if result else "Không nhận được phản hồi từ API"
@@ -289,7 +302,7 @@ def handle_callbacks(call):
                 user_active[chat_id] = {"email": p[0], "token": p[2], "id": p[3]}
                 
                 bot.edit_message_text(f"🚀 Đang quét: `{p[0]}`", chat_id, call.message.message_id, parse_mode="Markdown")
-                threading.Thread(target=loop_scan, args=(chat_id, p[0], p[2], p[3], "all", stop_event, 300)).start()
+                threading.Thread(target=loop_scan, args=(chat_id, p[0], p[2], p[3], "all", stop_event, 300), daemon=True).start() # Fix thread Railway
     
     elif call.data.startswith("read:"):
         handle_read_mail_callback(call)
@@ -340,6 +353,6 @@ if __name__ == "__main__":
     print(f"🤖 Bot đang chạy...")
     print(f"👑 Admin ID: {ADMIN_ID}")
     print(f"🔒 Chỉ admin mới được sử dụng bot")
-    print(f"📦 Nút Mua 1 SP: product_id=894, qty=1")
-    print(f"🔑 Đã fix hàm buy_product chuẩn với token trong data")
-    bot.infinity_polling()
+    print(f"📦 Nút Mua 1 SP: product_id=894, qty=1 (có retry)")
+    print(f"🔑 Đã fix hàm buy_product với Bearer token và kiểm tra phản hồi")
+    bot.infinity_polling(skip_pending=True) # Fix lỗi Railway (treo bot / crash ngầm)

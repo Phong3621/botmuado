@@ -4,20 +4,27 @@ import threading
 import time
 import os
 from telebot import types
-
 # --- CẤU HÌNH BOT ---
-API_TOKEN = "8611787830:AAE4arCbNdls_gRnx5V9DI2k5sNAepw2UEw"
-bot = telebot.TeleBot(API_TOKEN, num_threads=10)
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 # === ADMIN CONFIG ===
-ADMIN_ID = 8547071506
+ADMIN_ID = os.getenv("ADMIN_ID")
+
+# --- CẤU HÌNH API MUA HÀNG ---
+API_TOKEN_SHOP = os.getenv("SHOP_TOKEN")
+
+# KIỂM TRA CÁC BIẾN MÔI TRƯỜNG
+if not API_TOKEN or not ADMIN_ID or not API_TOKEN_SHOP:
+    print("❌ Thiếu biến môi trường!")
+    exit()
+
+ADMIN_ID = int(ADMIN_ID)
+
+bot = telebot.TeleBot(API_TOKEN, num_threads=10)
 
 DB_FILE = "database_mail.txt"
 user_active = {}
 scanning_events = {}
-
-# --- CẤU HÌNH API MUA HÀNG ---
-API_TOKEN_SHOP = "61b5af4899204272d2c6c3fde4a3fae93b33427a8d4fa4192bde0aa3ae2bafa7"  # Thay token mua hàng của bạn
 
 # ==================== DECORATOR KIỂM TRA ADMIN ====================
 def admin_only(func):

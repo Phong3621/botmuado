@@ -3,6 +3,7 @@ import requests
 import threading
 import time
 import os
+import logging
 from telebot import types
 # --- CẤU HÌNH BOT ---
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -14,8 +15,11 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 API_TOKEN_SHOP = os.getenv("SHOP_TOKEN")
 
 # KIỂM TRA CÁC BIẾN MÔI TRƯỜNG
+# Cấu hình logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 if not API_TOKEN or not ADMIN_ID or not API_TOKEN_SHOP:
-    print("❌ Thiếu biến môi trường!")
+    logger.error("❌ Thiếu biến môi trường!")
     exit()
 
 ADMIN_ID = int(ADMIN_ID)
@@ -65,8 +69,8 @@ def buy_product(product_id, qty=1, coupon=None):
     try:
         res = requests.post(url, headers=headers, data=data, timeout=15) # Tăng timeout lên 15s
 
-        print(f"📡 STATUS: {res.status_code}")
-        print(f"📝 RAW: {res.text[:300]}") # Log raw text, giới hạn 300 ký tự
+        logger.info(f"📡 API STATUS: {res.status_code}")
+        logger.debug(f"📝 API RAW: {res.text[:300]}") # Log raw text, giới hạn 300 ký tự
 
         # Kiểm tra nếu API trả về rỗng hoặc HTML
         if not res.text.strip():
@@ -78,7 +82,7 @@ def buy_product(product_id, qty=1, coupon=None):
         return res.json()
 
     except Exception as e: # Bắt tất cả các lỗi liên quan đến request
-        return {"success": False, "message": f"Lỗi request: {e}"}
+        return {"success": False, "message": f"Lỗi request API mua hàng: {e}"}
 
 # ==================== HÀM XỬ LÝ MAIL ====================
 def get_list_db():
@@ -102,7 +106,7 @@ def call_api(email, token, client_id, service):
         return res.json()
     except (requests.exceptions.RequestException, requests.exceptions.JSONDecodeError) as e:
         # Thay print bằng logging trong môi trường production
-        print(f"Lỗi khi gọi API get_code_oauth2: {e}")
+        logger.error(f"Lỗi khi gọi API get_code_oauth2: {e}")
         return None
 
 def loop_scan(chat_id, email, token, client_id, service, stop_event, timeout_seconds=300):
@@ -357,9 +361,13 @@ def handle_info_callback(call):
 
 # ==================== CHẠY BOT ====================
 if __name__ == "__main__":
-    print(f"🤖 Bot đang chạy...")
-    print(f"👑 Admin ID: {ADMIN_ID}")
-    print(f"🔒 Chỉ admin mới được sử dụng bot")
-    print(f"📦 Nút Mua 1 SP: product_id=894, qty=1 (có retry)")
-    print(f"🔑 Đã fix hàm buy_product với Bearer token và kiểm tra phản hồi")
-    bot.infinity_polling(skip_pending=True) # Fix lỗi Railway (treo bot / crash ngầm)
+    logger.info(f"🤖 Bot đang khởi động...")
+    logger.info(f"👑 Admin ID: {ADMIN_ID}")
+    logger.info(f"🔒 Chỉ admin mới được sử dụng bot")
+    logger.info(f"📦 Nút Mua 1 SP: product_id=894, qty=1 (có retry)")
+    logger.info(f"🔑 Đã fix hàm buy_product với Bearer token và kiểm tra phản hồi")
+    try:
+        bot.infinity_polling(skip_pending=True) # Fix lỗi Railway (treo bot / crash ngầm)
+    except telebot.apihelper.ApiTelegramException as e:
+        logger.critical(f"❌ Lỗi nghiêm trọng khi khởi động bot: {e}. Đảm bảo chỉ có MỘT instance bot đang chạy!")
+        exit(1)

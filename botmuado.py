@@ -2,6 +2,7 @@ import telebot
 import requests
 import threading
 import time
+import cloudscraper
 import os
 from telebot import types
 
@@ -18,6 +19,8 @@ scanning_events = {}
 
 # --- CẤU HÌNH API MUA HÀNG ---
 API_TOKEN_SHOP = "61b5af4899204272d2c6c3fde4a3fae93b33427a8d4fa4192bde0aa3ae2bafa7"  # Thay token mua hàng của bạn
+
+scraper = cloudscraper.create_scraper()
 
 # ==================== DECORATOR KIỂM TRA ADMIN ====================
 def admin_only(func):
@@ -42,12 +45,13 @@ def buy_product(product_id, qty=1, coupon=None):
     url = "https://aviammo.com/api/buy-product.php"
 
     headers = {
+        "Authorization": f"Bearer {API_TOKEN_SHOP}", # Thêm token vào header
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": "Mozilla/5.0"
     }
 
     data = {
-        "token": API_TOKEN_SHOP,
+        # "token": API_TOKEN_SHOP, # Token đã được chuyển lên Authorization header
         "product_id": product_id,
         "qty": qty
     }
@@ -56,11 +60,11 @@ def buy_product(product_id, qty=1, coupon=None):
         data["coupon"] = coupon
 
     try:
-        res = requests.post(url, headers=headers, data=data, timeout=10)
+        res = scraper.post(url, headers=headers, data=data, timeout=15) # Sử dụng scraper và tăng timeout
 
         # Log để debug
-        print(f"📡 STATUS: {res.status_code}")
-        print(f"📝 TEXT: {res.text[:200]}")
+        print("STATUS:", res.status_code)
+        print("TEXT:", res.text[:300]) # Log nhiều hơn để dễ debug
 
         return res.json()
 

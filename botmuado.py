@@ -47,12 +47,12 @@ def buy_product(product_id, qty=1, coupon=None):
     url = "https://aviammo.com/api/buy-product.php"
 
     headers = {
+        "Authorization": f"Bearer {API_TOKEN_SHOP}", # Sử dụng Bearer token trong header
         "Content-Type": "application/x-www-form-urlencoded",
         "User-Agent": "Mozilla/5.0"
     }
 
     data = {
-        "token": API_TOKEN_SHOP,
         "product_id": product_id,
         "qty": qty
     }
